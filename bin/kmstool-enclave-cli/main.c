@@ -43,6 +43,7 @@ struct app_ctx {
     const struct aws_string *aws_access_key_id;
     const struct aws_string *aws_secret_access_key;
     const struct aws_string *aws_session_token;
+    const struct aws_string *aws_key_id;
 
     const struct aws_string *ciphertext_b64;
 };
@@ -56,6 +57,7 @@ static void s_usage(int exit_code) {
     fprintf(stderr, "    --aws-secret-access-key SECRET_ACCESS_KEY: AWS secret access key\n");
     fprintf(stderr, "    --aws-session-token SESSION_TOKEN: Session token associated with the access key ID\n");
     fprintf(stderr, "    --ciphertext CIPHERTEXT: base64-encoded ciphertext that need to decrypt\n");
+    fprintf(stderr, "    --key-id: cms key id\n");
     fprintf(stderr, "    --help: Display this message and exit\n");
     exit(exit_code);
 }
@@ -67,6 +69,7 @@ static struct aws_cli_option s_long_options[] = {
     {"aws-access-key-id", AWS_CLI_OPTIONS_REQUIRED_ARGUMENT, NULL, 'k'},
     {"aws-secret-access-key", AWS_CLI_OPTIONS_REQUIRED_ARGUMENT, NULL, 's'},
     {"aws-session-token", AWS_CLI_OPTIONS_REQUIRED_ARGUMENT, NULL, 't'},
+    {"aws-key-id", AWS_CLI_OPTIONS_REQUIRED_ARGUMENT, NULL, 'i'},
     {"ciphertext", AWS_CLI_OPTIONS_REQUIRED_ARGUMENT, NULL, 'c'},
     {NULL, 0, NULL, 0},
 };
@@ -77,11 +80,12 @@ static void s_parse_options(int argc, char **argv, struct app_ctx *ctx) {
     ctx->aws_access_key_id = NULL;
     ctx->aws_secret_access_key = NULL;
     ctx->aws_session_token = NULL;
+    ctx->aws_key_id = NULL;
     ctx->ciphertext_b64 = NULL;
 
     while (true) {
         int option_index = 0;
-        int c = aws_cli_getopt_long(argc, argv, "r:x:k:s:t:c:h", s_long_options, &option_index);
+        int c = aws_cli_getopt_long(argc, argv, "r:x:k:s:t:i:c:h", s_long_options, &option_index);
         if (c == -1) {
             break;
         }
@@ -108,6 +112,9 @@ static void s_parse_options(int argc, char **argv, struct app_ctx *ctx) {
             case 'c':
                 ctx->ciphertext_b64 = aws_string_new_from_c_str(ctx->allocator, aws_cli_optarg);
                 break;
+            case 'i':
+                ctx->aws_key_id = aws_string_new_from_c_str(ctx->allocator, aws_cli_optarg);
+                break;
             case 'h':
                 s_usage(0);
                 break;
@@ -133,6 +140,12 @@ static void s_parse_options(int argc, char **argv, struct app_ctx *ctx) {
     // Check if AWS session token is set
     if (ctx->aws_session_token == NULL) {
         fprintf(stderr, "--aws-session-token must be set\n");
+        exit(1);
+    }
+
+    // Check if AWS key id is set
+    if (ctx->aws_key_id == NULL) {
+        fprintf(stderr, "--aws-key-id must be set\n");
         exit(1);
     }
 
@@ -192,7 +205,8 @@ static int decrypt(struct app_ctx *app_ctx, struct aws_byte_buf *ciphertext_decr
 
     /* Decrypt the data with KMS. */
     struct aws_byte_buf ciphertext_decrypted;
-    rc = aws_kms_decrypt_blocking(client, &ciphertext, &ciphertext_decrypted);
+
+    rc = aws_kms_decrypt_with_asymmetric_blocking(client, app_ctx->aws_key_id, &ciphertext, &ciphertext_decrypted);
     aws_byte_buf_clean_up(&ciphertext);
     fail_on(rc != AWS_OP_SUCCESS, "Could not decrypt ciphertext");
 
@@ -203,7 +217,7 @@ static int decrypt(struct app_ctx *app_ctx, struct aws_byte_buf *ciphertext_decr
     rc = aws_byte_buf_init(ciphertext_decrypted_b64, app_ctx->allocator, ciphertext_decrypted_b64_len + 1);
     fail_on(rc != AWS_OP_SUCCESS, "Memory allocation error");
     rc = aws_base64_encode(&ciphertext_decrypted_cursor, ciphertext_decrypted_b64);
-    fail_on(rc != AWS_OP_SUCCESS, "Base64 encoding error");
+    // fail_on(rc != AWS_OP_SUCCESS, "Base64 encoding error");
     aws_byte_buf_append_null_terminator(ciphertext_decrypted_b64);
 
     aws_nitro_enclaves_kms_client_destroy(client);
@@ -244,10 +258,12 @@ int main(int argc, char **argv) {
     }
 
     /* Print the base64-encoded plaintext to stdout */
-    fprintf(stdout, "%s", (const char *)ciphertext_decrypted_b64.buffer);
+    // fprintf(stdout, "%s", (const char *)ciphertext_decrypted_b64.buffer);
+    fprintf(stdout, "%s", ciphertext_decrypted_b64.buffer);
 
     aws_byte_buf_clean_up(&ciphertext_decrypted_b64);
     aws_nitro_enclaves_library_clean_up();
 
     return 0;
 }
+

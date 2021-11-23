@@ -2665,6 +2665,73 @@ err_clean:
     return AWS_OP_ERR;
 }
 
+int aws_kms_decrypt_with_asymmetric_blocking(
+    struct aws_nitro_enclaves_kms_client *client,
+    const struct aws_string *key_id,
+    const struct aws_byte_buf *ciphertext,
+    struct aws_byte_buf *plaintext /* TODO: err_reason */) {
+    AWS_PRECONDITION(client != NULL);
+    AWS_PRECONDITION(key_id != NULL);
+    AWS_PRECONDITION(ciphertext != NULL);
+    AWS_PRECONDITION(plaintext != NULL);
+
+    struct aws_string *response = NULL;
+    struct aws_string *request = NULL;
+    struct aws_kms_decrypt_response *response_structure = NULL;
+    struct aws_kms_decrypt_request *request_structure = NULL;
+    int rc = 0;
+
+    request_structure = aws_kms_decrypt_request_new(client->allocator);
+    if (request_structure == NULL) {
+        fprintf(stderr, "It here 1 ");
+        return AWS_OP_ERR;
+    }
+
+    aws_byte_buf_init_copy(&request_structure->ciphertext_blob, client->allocator, ciphertext);
+    request_structure->key_id = aws_string_clone_or_reuse(client->allocator, key_id);
+    request_structure->encryption_algorithm = AWS_EA_RSAES_OAEP_SHA_256;
+
+    request = aws_kms_decrypt_request_to_json(request_structure);
+    if (request == NULL) {
+        fprintf(stderr, "It here 5 \n");
+        goto err_clean;
+    }
+
+    rc = s_aws_nitro_enclaves_kms_client_call_blocking(client, kms_target_decrypt, request, &response);
+    if (rc != 200) {
+        // fprintf(stderr, "Response: %s\n", aws_string_c_str(response));
+        fprintf(stderr, "Got non-200 answer from KMS: %d\n", rc);
+        goto err_clean;
+    }
+
+    response_structure = aws_kms_decrypt_response_from_json(client->allocator, response);
+    fprintf(stderr, "It here %s\n",  aws_string_c_str(response));
+    if (response_structure == NULL) {
+        fprintf(stderr, "It here 71 \n" );
+        fprintf(stderr, "Could not read response from KMS: %d\n", rc);
+        goto err_clean;
+    }
+
+    //rc = s_decrypt_ciphertext_for_recipient(
+    //    client->allocator, &response_structure->ciphertext_for_recipient, client->keypair, plaintext);
+    // aws_byte_buf_init_copy(&request_structure->plaintext, client->allocator, plaintext);
+    aws_byte_buf_init_copy(plaintext, client->allocator, &response_structure->plaintext);
+
+
+    aws_kms_decrypt_request_destroy(request_structure);
+    aws_kms_decrypt_response_destroy(response_structure);
+    aws_string_destroy(request);
+    aws_string_destroy(response);
+
+    return AWS_OP_SUCCESS;
+err_clean:
+    aws_kms_decrypt_request_destroy(request_structure);
+    aws_kms_decrypt_response_destroy(response_structure);
+    aws_string_destroy(request);
+    aws_string_destroy(response);
+    return AWS_OP_ERR;
+}
+
 int aws_kms_encrypt_blocking(
     struct aws_nitro_enclaves_kms_client *client,
     const struct aws_string *key_id,
@@ -2860,3 +2927,4 @@ err_clean:
     aws_string_destroy(response);
     return AWS_OP_ERR;
 }
+
