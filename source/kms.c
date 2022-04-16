@@ -18,6 +18,7 @@
 #define KMS_ENCRYPTION_CONTEXT "EncryptionContext"
 #define KMS_GRANT_TOKENS "GrantTokens"
 #define KMS_KEY_ID "KeyId"
+#define KMS_KEY_ORIGIN "KeyOrigin"
 #define KMS_RECIPIENT "Recipient"
 #define KMS_PUBLIC_KEY "PublicKey"
 #define KMS_KEY_ENCRYPTION_ALGORITHM "KeyEncryptionAlgorithm"
@@ -1205,6 +1206,7 @@ clean_up:
 struct aws_kms_decrypt_response *aws_kms_decrypt_response_from_json(
     struct aws_allocator *allocator,
     const struct aws_string *json) {
+	
 
     if (allocator == NULL) {
         allocator = aws_nitro_enclaves_get_allocator();
@@ -1235,6 +1237,10 @@ struct aws_kms_decrypt_response *aws_kms_decrypt_response_from_json(
             goto clean_up;
         }
 
+        if (AWS_SAFE_COMPARE(key, KMS_KEY_ORIGIN)){
+            fprintf(stderr, "ignore key: KeyOrigin \n");
+            continue;	
+        }
         if (AWS_SAFE_COMPARE(key, KMS_KEY_ID)) {
             response->key_id = s_aws_string_from_json(allocator, value);
             if (response->key_id == NULL) {
@@ -2683,7 +2689,7 @@ int aws_kms_decrypt_with_asymmetric_blocking(
 
     request_structure = aws_kms_decrypt_request_new(client->allocator);
     if (request_structure == NULL) {
-        fprintf(stderr, "It here 1 ");
+        // fprintf(stderr, "It here 1 ");
         return AWS_OP_ERR;
     }
 
@@ -2693,7 +2699,7 @@ int aws_kms_decrypt_with_asymmetric_blocking(
 
     request = aws_kms_decrypt_request_to_json(request_structure);
     if (request == NULL) {
-        fprintf(stderr, "It here 5 \n");
+        // fprintf(stderr, "It here 5 \n");
         goto err_clean;
     }
 
@@ -2705,7 +2711,7 @@ int aws_kms_decrypt_with_asymmetric_blocking(
     }
 
     response_structure = aws_kms_decrypt_response_from_json(client->allocator, response);
-    fprintf(stderr, "It here %s\n",  aws_string_c_str(response));
+    // fprintf(stderr, "It here 700%s\n",  aws_string_c_str(response));
     if (response_structure == NULL) {
         fprintf(stderr, "It here 71 \n" );
         fprintf(stderr, "Could not read response from KMS: %d\n", rc);
